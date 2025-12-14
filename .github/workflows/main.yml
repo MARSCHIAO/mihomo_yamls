@@ -86,6 +86,12 @@ jobs:
           curl -s -o "General_Config/liandu2024/clash-all-fallback.yaml" \
             "https://raw.githubusercontent.com/liandu2024/little/refs/heads/main/yaml/clash-all-fallback.yaml"
 
+          # --- Lanlan13-14 ---
+          mkdir -p "General_Config/Lanlan13-14"
+          curl -s -o "General_Config/Lanlan13-14/configfull.yaml" "https://raw.githubusercontent.com/Lanlan13-14/Rules/refs/heads/main/configfull.yaml"
+          curl -s -o "General_Config/Lanlan13-14/configfull_lite.yaml" "https://raw.githubusercontent.com/Lanlan13-14/Rules/refs/heads/main/configfull_lite.yaml"
+          curl -s -o "General_Config/Lanlan13-14/configfull_NoAd.yaml" "https://raw.githubusercontent.com/Lanlan13-14/Rules/refs/heads/main/configfull_NoAd.yaml"
+
           # --- echs-top (General) ---
           mkdir -p "General_Config/echs-top"
           curl -s -o "General_Config/echs-top/mihomo.yaml" \
