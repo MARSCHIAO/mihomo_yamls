@@ -27,7 +27,7 @@ jobs:
         run: |
           pip install --no-cache-dir pyyaml
 
-      - name: Generate READMEs (auto + meta)
+      - name: Generate READMEs (auto + author-meta inheritance)
         run: |
           python3 << 'EOF'
           import os
@@ -38,9 +38,7 @@ jobs:
           IGNORE_DIRS = {".git", ".github"}
           IGNORE_FILES = {"README.md", "LICENSE", "release_body.md"}
 
-          GLOBAL_RULES_PATH = ".github/readme-rules.yaml"
-
-          # ------------------ 工具函数 ------------------
+          # -------- 工具函数 --------
           def load_yaml(path):
               try:
                   with open(path, encoding="utf-8") as f:
@@ -55,20 +53,24 @@ jobs:
               except Exception:
                   return "Unknown"
 
-          def classify_filename(name, rules):
-              tags = []
-              for r in rules.get("file_rules", []):
-                  if r.get("match") and r["match"].lower() in name.lower():
-                      tags.append(r.get("tag"))
-              return " / ".join(tags) if tags else "通用"
-
-          def beautify_title(name):
+          def beautify(name):
               return name.replace("_", " ").replace("-", " ").title()
 
-          # ------------------ 加载全局规则 ------------------
-          GLOBAL_RULES = load_yaml(GLOBAL_RULES_PATH)
+          def find_inherited_meta(path):
+              """
+              向上查找最近的 ._meta.yaml（作者级 / 目录级）
+              """
+              cur = os.path.abspath(path)
+              root = os.path.abspath(".")
+              while True:
+                  meta_path = os.path.join(cur, "._meta.yaml")
+                  if os.path.isfile(meta_path):
+                      return load_yaml(meta_path)
+                  if cur == root:
+                      return {}
+                  cur = os.path.dirname(cur)
 
-          # ------------------ 主逻辑 ------------------
+          # -------- 主流程 --------
           for root, dirs, files in os.walk("."):
               dirs[:] = [d for d in dirs if d not in IGNORE_DIRS]
 
@@ -79,69 +81,65 @@ jobs:
                   f for f in files
                   if not f.startswith(".") and f not in IGNORE_FILES
               ]
+              if not real_files:
+                  continue
+
               yaml_files = [
                   f for f in real_files
                   if f.lower().endswith((".yml", ".yaml"))
               ]
 
-              if not real_files:
-                  continue
+              # 🔑 作者级 / 目录级 meta 继承
+              meta = find_inherited_meta(root)
 
-              rel = os.path.relpath(root, ".")
-              meta_path = os.path.join(root, "._meta.yaml")
-              meta = load_yaml(meta_path) if os.path.exists(meta_path) else {}
-
-              # ---------- 决定模式 ----------
-              if meta:
-                  mode = meta.get("type", "single")
+              # 模式判断
+              if meta.get("type"):
+                  mode = meta["type"]
               else:
                   mode = "single-auto" if len(yaml_files) == 1 else "collection-auto"
 
-              title = meta.get("title") or beautify_title(os.path.basename(root))
-              alias = GLOBAL_RULES.get("name_alias", {}).get(os.path.basename(root))
-              if alias:
-                  title = alias
+              title = meta.get("title") or beautify(os.path.basename(root))
 
+              rel = os.path.relpath(root, ".")
               lines = []
               lines.append(f"# {title}\n")
 
-              # ---------- 项目链接 ----------
-              if meta.get("project_url"):
-                  lines.append(f"> 项目地址：{meta['project_url']}")
-              if meta.get("telegram"):
-                  lines.append(f"> Telegram：{meta['telegram']}")
-              if meta.get("author"):
-                  lines.append(f"> 作者：{meta['author']}")
+              # -------- 作者信息（继承生效的关键体现）--------
               if meta:
+                  if meta.get("author"):
+                      lines.append(f"> **作者**：{meta['author']}")
+                  if meta.get("project_url"):
+                      lines.append(f"> **项目地址**：{meta['project_url']}")
+                  if meta.get("telegram"):
+                      lines.append(f"> **Telegram**：{meta['telegram']}")
                   lines.append("")
 
-              # ---------- 单文件 ----------
-              if mode.startswith("single"):
-                  target = yaml_files[0] if yaml_files else None
-                  if target:
-                      url = f"{REPO_URL}/{urllib.parse.quote(rel)}/{urllib.parse.quote(target)}"
-                      lines.append("## 📄 配置说明\n")
-                      lines.append(f"- **文件**：`{target}`")
-                      lines.append(f"- **大小**：{file_size(os.path.join(root, target))}")
-                      lines.append(f"- **链接**：[查看源码]({url})")
+              # -------- 单文件目录 --------
+              if mode.startswith("single") and yaml_files:
+                  f = yaml_files[0]
+                  url = f"{REPO_URL}/{urllib.parse.quote(rel)}/{urllib.parse.quote(f)}"
+                  lines.append("## 📄 配置说明\n")
+                  lines.append(f"- **文件名**：`{f}`")
+                  lines.append(f"- **大小**：{file_size(os.path.join(root, f))}")
+                  lines.append(f"- **源码**：[查看]({url})")
 
-                      if meta.get("files", {}).get(target, {}).get("description"):
-                          lines.append(f"\n{meta['files'][target]['description']}")
+                  desc = meta.get("files", {}).get(f, {}).get("description")
+                  if desc:
+                      lines.append(f"\n{desc}")
 
-              # ---------- 多文件 ----------
+              # -------- 多文件目录 --------
               else:
                   lines.append("## 📦 配置文件列表\n")
-                  lines.append("| 文件名 | 大小 | 定位 | 链接 |")
-                  lines.append("| :--- | :--- | :--- | :--- |")
+                  lines.append("| 文件名 | 大小 | 链接 |")
+                  lines.append("| :--- | :--- | :--- |")
 
                   for f in sorted(yaml_files):
-                      tag = classify_filename(f, GLOBAL_RULES)
                       url = f"{REPO_URL}/{urllib.parse.quote(rel)}/{urllib.parse.quote(f)}"
                       lines.append(
-                          f"| `{f}` | {file_size(os.path.join(root, f))} | {tag} | [查看]({url}) |"
+                          f"| `{f}` | {file_size(os.path.join(root, f))} | [查看]({url}) |"
                       )
 
-              # ---------- 文件兜底 ----------
+              # -------- 其他文件 --------
               others = [f for f in real_files if f not in yaml_files]
               if others:
                   lines.append("\n## 📁 其他文件\n")
@@ -153,7 +151,7 @@ jobs:
                           f"| `{f}` | {file_size(os.path.join(root, f))} | [查看]({url}) |"
                       )
 
-              # ---------- License ----------
+              # -------- License（继承）--------
               if meta.get("license"):
                   lines.append("\n## 📄 License\n")
                   lines.append(meta["license"])
@@ -161,7 +159,7 @@ jobs:
               with open(os.path.join(root, "README.md"), "w", encoding="utf-8") as f:
                   f.write("\n".join(lines))
 
-              print(f"Generated README: {rel}")
+              print(f"Generated README with inheritance: {rel}")
 
           EOF
 
@@ -170,5 +168,5 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add **/README.md
-          git commit -m "Docs: auto-generate smart READMEs" || echo "No changes to commit"
+          git commit -m "Docs: generate READMEs with author meta inheritance" || echo "No changes to commit"
           git push origin HEAD:${{ github.ref_name }}
