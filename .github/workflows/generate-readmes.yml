@@ -1,174 +1,115 @@
-name: Generate Smart READMEs
+name: Generate Sub-READMEs
 
 on:
-  workflow_dispatch:
-  workflow_run:
+  workflow_dispatch: # 允许手动触发
+  workflow_run:      # 当更新文件的那个工作流完成后自动运行
     workflows: ["Update File Test"]
-    types: [completed]
+    types:
+      - completed
 
 permissions:
   contents: write
 
 jobs:
-  generate-smart-readmes:
+  generate-readmes:
     runs-on: ubuntu-latest
-    if: ${{ github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success' }}
-
+    if: ${{ github.event.workflow_run.conclusion == 'success' || github.event_name == 'workflow_dispatch' }}
     steps:
-      - name: Checkout repository
+      - name: 检查代码仓库
         uses: actions/checkout@v4
+        with:
+          ref: ${{ github.ref }}
 
-      - name: Setup Python
+      - name: 设置 Python 环境
         uses: actions/setup-python@v4
         with:
           python-version: '3.x'
 
-      - name: Install dependencies
+      - name: 运行生成脚本
         run: |
-          pip install --no-cache-dir pyyaml
-
-      - name: Generate READMEs (auto + meta)
-        run: |
-          python3 << 'EOF'
+          python3 -c '
           import os
-          import yaml
           import urllib.parse
 
+          # 仓库基础链接
           REPO_URL = "https://github.com/${{ github.repository }}/blob/main"
-          IGNORE_DIRS = {".git", ".github"}
-          IGNORE_FILES = {"README.md", "LICENSE", "release_body.md"}
+          
+          # 文件夹名称映射（让标题更友好）
+          DIR_MAP = {
+              "Official_Examples": "Mihomo 官方示例 (Official)",
+              "General_Config": "通用进阶配置 (General Config)",
+              "Smart_Mode": "Smart 模式 / 路由专用 (Smart Mode)",
+              "Mobile_Modules": "Android 手机模块 (Mobile Modules)"
+          }
 
-          GLOBAL_RULES_PATH = ".github/readme-rules.yaml"
+          # 忽略的文件和目录
+          IGNORE_DIRS = [".git", ".github"]
+          IGNORE_FILES = ["README.md", "LICENSE"]
 
-          # ------------------ 工具函数 ------------------
-          def load_yaml(path):
-              try:
-                  with open(path, encoding="utf-8") as f:
-                      return yaml.safe_load(f) or {}
-              except Exception:
-                  return {}
+          def generate_readme(root_path, dirs, files):
+              # 获取相对路径
+              rel_path = os.path.relpath(root_path, ".")
+              if rel_path == ".": return
 
-          def file_size(path):
-              try:
-                  s = os.path.getsize(path)
-                  return f"{s} B" if s < 1024 else f"{s/1024:.1f} KB"
-              except Exception:
-                  return "Unknown"
+              # 获取文件夹名称
+              folder_name = os.path.basename(root_path)
+              
+              # 尝试获取更友好的标题（如果是顶级目录）
+              display_title = DIR_MAP.get(folder_name, folder_name)
 
-          def classify_filename(name, rules):
-              tags = []
-              for r in rules.get("file_rules", []):
-                  if r.get("match") and r["match"].lower() in name.lower():
-                      tags.append(r.get("tag"))
-              return " / ".join(tags) if tags else "通用"
+              # 准备 Markdown 内容
+              content = []
+              content.append(f"# 📂 {display_title}\n")
+              content.append("> 自动生成的文件列表 / Automatically generated file list.\n")
+              
+              # 计算返回层级 (用于返回主页链接)
+              depth = rel_path.count(os.sep) + 1
+              back_link = "../" * depth + "README.md"
+              content.append(f"[🔙 返回主页 (Return to Home)]({back_link})\n")
+              
+              content.append("## 📄 文件列表 (Files)\n")
+              content.append("| 文件名 (Filename) | 大小 (Size) | 在线查看 (Link) |")
+              content.append("| :--- | :--- | :--- |")
 
-          def beautify_title(name):
-              return name.replace("_", " ").replace("-", " ").title()
+              file_count = 0
+              # 遍历文件
+              for file in sorted(files):
+                  if file in IGNORE_FILES or file.startswith("."):
+                      continue
+                  
+                  file_path = os.path.join(root_path, file)
+                  file_url = f"{REPO_URL}/{urllib.parse.quote(rel_path)}/{urllib.parse.quote(file)}"
+                  
+                  # 获取文件大小
+                  size_bytes = os.path.getsize(file_path)
+                  if size_bytes < 1024:
+                      size_str = f"{size_bytes} B"
+                  else:
+                      size_str = f"{size_bytes / 1024:.1f} KB"
 
-          # ------------------ 加载全局规则 ------------------
-          GLOBAL_RULES = load_yaml(GLOBAL_RULES_PATH)
+                  content.append(f"| **{file}** | {size_str} | [查看配置]({file_url}) |")
+                  file_count += 1
 
-          # ------------------ 主逻辑 ------------------
+              # 只有当目录下有文件时才写入 README
+              if file_count > 0:
+                  with open(os.path.join(root_path, "README.md"), "w", encoding="utf-8") as f:
+                      f.write("\n".join(content))
+                  print(f"Generated README for: {rel_path}")
+
+          # 遍历目录树
           for root, dirs, files in os.walk("."):
+              # 过滤忽略的目录
               dirs[:] = [d for d in dirs if d not in IGNORE_DIRS]
+              
+              generate_readme(root, dirs, files)
+          '
 
-              if root == ".":
-                  continue
-
-              real_files = [
-                  f for f in files
-                  if not f.startswith(".") and f not in IGNORE_FILES
-              ]
-              yaml_files = [
-                  f for f in real_files
-                  if f.lower().endswith((".yml", ".yaml"))
-              ]
-
-              if not real_files:
-                  continue
-
-              rel = os.path.relpath(root, ".")
-              meta_path = os.path.join(root, "._meta.yaml")
-              meta = load_yaml(meta_path) if os.path.exists(meta_path) else {}
-
-              # ---------- 决定模式 ----------
-              if meta:
-                  mode = meta.get("type", "single")
-              else:
-                  mode = "single-auto" if len(yaml_files) == 1 else "collection-auto"
-
-              title = meta.get("title") or beautify_title(os.path.basename(root))
-              alias = GLOBAL_RULES.get("name_alias", {}).get(os.path.basename(root))
-              if alias:
-                  title = alias
-
-              lines = []
-              lines.append(f"# {title}\n")
-
-              # ---------- 项目链接 ----------
-              if meta.get("project_url"):
-                  lines.append(f"> 项目地址：{meta['project_url']}")
-              if meta.get("telegram"):
-                  lines.append(f"> Telegram：{meta['telegram']}")
-              if meta.get("author"):
-                  lines.append(f"> 作者：{meta['author']}")
-              if meta:
-                  lines.append("")
-
-              # ---------- 单文件 ----------
-              if mode.startswith("single"):
-                  target = yaml_files[0] if yaml_files else None
-                  if target:
-                      url = f"{REPO_URL}/{urllib.parse.quote(rel)}/{urllib.parse.quote(target)}"
-                      lines.append("## 📄 配置说明\n")
-                      lines.append(f"- **文件**：`{target}`")
-                      lines.append(f"- **大小**：{file_size(os.path.join(root, target))}")
-                      lines.append(f"- **链接**：[查看源码]({url})")
-
-                      if meta.get("files", {}).get(target, {}).get("description"):
-                          lines.append(f"\n{meta['files'][target]['description']}")
-
-              # ---------- 多文件 ----------
-              else:
-                  lines.append("## 📦 配置文件列表\n")
-                  lines.append("| 文件名 | 大小 | 定位 | 链接 |")
-                  lines.append("| :--- | :--- | :--- | :--- |")
-
-                  for f in sorted(yaml_files):
-                      tag = classify_filename(f, GLOBAL_RULES)
-                      url = f"{REPO_URL}/{urllib.parse.quote(rel)}/{urllib.parse.quote(f)}"
-                      lines.append(
-                          f"| `{f}` | {file_size(os.path.join(root, f))} | {tag} | [查看]({url}) |"
-                      )
-
-              # ---------- 文件兜底 ----------
-              others = [f for f in real_files if f not in yaml_files]
-              if others:
-                  lines.append("\n## 📁 其他文件\n")
-                  lines.append("| 文件 | 大小 | 链接 |")
-                  lines.append("| :--- | :--- | :--- |")
-                  for f in others:
-                      url = f"{REPO_URL}/{urllib.parse.quote(rel)}/{urllib.parse.quote(f)}"
-                      lines.append(
-                          f"| `{f}` | {file_size(os.path.join(root, f))} | [查看]({url}) |"
-                      )
-
-              # ---------- License ----------
-              if meta.get("license"):
-                  lines.append("\n## 📄 License\n")
-                  lines.append(meta["license"])
-
-              with open(os.path.join(root, "README.md"), "w", encoding="utf-8") as f:
-                  f.write("\n".join(lines))
-
-              print(f"Generated README: {rel}")
-
-          EOF
-
-      - name: Commit changes
+      - name: 提交更改
         run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add **/README.md
-          git commit -m "Docs: auto-generate smart READMEs" || echo "No changes to commit"
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          
+          git add */**/README.md
+          git commit -m "Docs: Auto-generate sub-folder READMEs" || echo "No changes to commit"
+          
           git push origin HEAD:${{ github.ref_name }}
