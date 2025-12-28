@@ -251,7 +251,7 @@ jobs:
                       
                       content.append(f"### 📝 {filename}")
                       # 修复：加上了引号 'file_size' 和 '未设置'
-                      content.append(f"- **大小**: {data.get('file_size', '未设置')}") 
+                      content.append(f"- **大小**: {data.get('get_file_size', '未设置')}") 
                       content.append(f"- **链接**: [查看源码]({file_url})")
 
                       ports_display = info.get("ports_display", [])
