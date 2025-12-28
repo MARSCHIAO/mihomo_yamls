@@ -1,8 +1,8 @@
 name: Generate Sub-READMEs
 
 on:
-  workflow_dispatch: # 允许手动触发
-  workflow_run:      # 当更新文件的那个工作流完成后自动运行
+  workflow_dispatch:
+  workflow_run:
     workflows: ["Update File Test"]
     types:
       - completed
@@ -34,11 +34,15 @@ jobs:
           import os
           import urllib.parse
           import yaml
+          import re
           
+          # --- 0. 核心修复：让 PyYAML 忽略自定义标签 ---
+          # 很多 Clash 配置包含 !include 等标签，会导致报错，这里强制忽略它们
+          yaml.add_multi_constructor("!", lambda loader, suffix, node: None, Loader=yaml.SafeLoader)
+
           # --- 配置区域 ---
           REPO_URL = "https://github.com/${{ github.repository }}/blob/main"
           
-          # 文件夹显示名称映射
           DIR_MAP = {
               "Official_Examples": "Mihomo 官方示例 (Official)",
               "General_Config": "通用进阶配置 (General Config)",
@@ -67,12 +71,41 @@ jobs:
                   return f"{size/1024:.1f} KB"
               except: return "Unknown"
 
+          def read_file_content(file_path):
+              """尝试使用多种编码读取文件，并处理 Tab 缩进问题"""
+              content = ""
+              try:
+                  with open(file_path, "r", encoding="utf-8") as f:
+                      content = f.read()
+              except UnicodeDecodeError:
+                  try:
+                      # 尝试 GBK/GB18030 (常见于中文 Windows 环境)
+                      with open(file_path, "r", encoding="gb18030", errors="ignore") as f:
+                          content = f.read()
+                  except Exception:
+                      return None
+              
+              # 修复 YAML 不允许 Tab 缩进的问题
+              if "\t" in content:
+                  content = content.replace("\t", "  ")
+              
+              return content
+
           def analyze_single_config(file_path):
               """解析单个 YAML 并返回结构化数据"""
               try:
-                  with open(file_path, "r", encoding="utf-8") as f:
-                      data = yaml.safe_load(f)
-                      
+                  raw_content = read_file_content(file_path)
+                  if not raw_content:
+                      print(f"Warning: Could not read content of {file_path}")
+                      return None
+
+                  # 使用 SafeLoader 加载，前面已经配置了忽略 ! 标签
+                  data = yaml.safe_load(raw_content)
+                  
+                  if not isinstance(data, dict):
+                      print(f"Warning: {file_path} is not a valid YAML dictionary")
+                      return None
+
                   info = {}
                   
                   # --- 1. 基础信息 ---
@@ -81,8 +114,7 @@ jobs:
                   info["allow_lan"] = "✅" if str(safe_get(data, ["allow-lan"])).lower() == "true" else "🚫"
                   info["tun"] = "✅ 开启" if safe_get(data, ["tun", "enable"], False) else "🚫 关闭"
 
-                  # --- 2. 端口信息提取 (新增) ---
-                  # 提取标准端口
+                  # --- 2. 端口信息提取 ---
                   info["port_mixed"] = safe_get(data, ["mixed-port"], "-")
                   info["port_http"] = safe_get(data, ["port"], "-")
                   info["port_socks"] = safe_get(data, ["socks-port"], "-")
@@ -90,17 +122,16 @@ jobs:
                   info["port_tproxy"] = safe_get(data, ["tproxy-port"], "-")
                   info["port_ctrl"] = safe_get(data, ["external-controller"], "-")
                   
-                  # 提取 Listeners (多端口监听)
                   info["listeners_raw"] = []
                   listeners = data.get("listeners", [])
-                  if listeners:
+                  if listeners and isinstance(listeners, list):
                       for l in listeners:
-                          name = l.get("name", "Unknown")
-                          port = l.get("port", "?")
-                          l_type = l.get("type", "mixed")
-                          info["listeners_raw"].append(f"| 👂 {name} | {port} | {l_type} |")
+                          if isinstance(l, dict):
+                              name = l.get("name", "Unknown")
+                              port = l.get("port", "?")
+                              l_type = l.get("type", "mixed")
+                              info["listeners_raw"].append(f"| 👂 {name} | {port} | {l_type} |")
 
-                  # 构建用于显示的端口列表 (Details用)
                   info["ports_display"] = []
                   if info["port_mixed"] != "-": info["ports_display"].append(f"| Mixed (混合) | {info['port_mixed']} | HTTP/SOCKS |")
                   if info["port_http"] != "-": info["ports_display"].append(f"| HTTP | {info['port_http']} | 仅 HTTP |")
@@ -108,41 +139,41 @@ jobs:
                   if info["port_redir"] != "-": info["ports_display"].append(f"| Redirect | {info['port_redir']} | 透明代理 (TCP) |")
                   if info["port_tproxy"] != "-": info["ports_display"].append(f"| TProxy | {info['port_tproxy']} | 透明代理 (UDP) |")
                   if info["port_ctrl"] != "-": info["ports_display"].append(f"| Controller | {info['port_ctrl']} | 控制面板 |")
-                  # 合并 Listeners 到显示列表
-                  if info["listeners_raw"]:
-                      for l_str in info["listeners_raw"]:
-                          # 简单处理一下字符串以便放入同一张表，或者单独列出
-                          pass 
 
                   # --- 3. 统计信息 ---
                   groups = data.get("proxy-groups", [])
-                  info["group_count"] = len(groups) if groups else 0
+                  info["group_count"] = len(groups) if isinstance(groups, list) else 0
                   
                   rules = data.get("rules", [])
-                  info["rule_count"] = len(rules) if rules else 0
+                  info["rule_count"] = len(rules) if isinstance(rules, list) else 0
                   
                   # --- 4. 详情提取 ---
                   info["groups_raw"] = []
-                  for pg in groups:
-                      name = pg.get("name", "Unknown")
-                      type_ = pg.get("type", "select")
-                      icon = "🚀"
-                      if "auto" in type_ or "url-test" in type_: icon = "♻️"
-                      elif "fallback" in type_: icon = "🔧"
-                      elif "load-balance" in type_: icon = "⚖️"
-                      elif "select" in type_: icon = "👆"
-                      info["groups_raw"].append(f"| {icon} {name} | `{type_}` |")
+                  if isinstance(groups, list):
+                      for pg in groups:
+                          if isinstance(pg, dict):
+                              name = pg.get("name", "Unknown")
+                              type_ = pg.get("type", "select")
+                              icon = "🚀"
+                              if "auto" in type_ or "url-test" in type_: icon = "♻️"
+                              elif "fallback" in type_: icon = "🔧"
+                              elif "load-balance" in type_: icon = "⚖️"
+                              elif "select" in type_: icon = "👆"
+                              info["groups_raw"].append(f"| {icon} {name} | `{type_}` |")
 
                   info["dns_raw"] = []
                   dns = data.get("dns", {})
-                  if dns.get("enable", False):
-                      for ns in dns.get("nameserver", []):
-                          if isinstance(ns, str):
-                              provider = "DoT" if "tls://" in ns else "DoH" if "https://" in ns else "UDP"
-                              info["dns_raw"].append(f"| {provider} | `{ns}` |")
+                  if isinstance(dns, dict) and dns.get("enable", False):
+                      nameservers = dns.get("nameserver", [])
+                      if isinstance(nameservers, list):
+                          for ns in nameservers:
+                              if isinstance(ns, str):
+                                  provider = "DoT" if "tls://" in ns else "DoH" if "https://" in ns else "UDP"
+                                  info["dns_raw"].append(f"| {provider} | `{ns}` |")
                   
                   return info
               except Exception as e:
+                  print(f"❌ Error parsing {file_path}: {e}")
                   return None
 
           def generate_comparison_table(configs_data):
@@ -155,7 +186,6 @@ jobs:
               lines.append("| " + " | ".join(headers) + " |")
               lines.append("| :--- | :--- " + "| :--- " * len(configs_data) + "|")
               
-              # 对比项：增加了主要端口
               rows = [
                   ("port_mixed", "混合端口 (Mixed)"),
                   ("port_ctrl", "控制面板 (Ctrl)"),
@@ -165,13 +195,11 @@ jobs:
                   ("rule_count", "规则条数"),
               ]
 
-              # 文件大小行
               size_row = ["**文件大小**", "-"]
               for filename, data in configs_data.items():
                   size_row.append(data["file_size"])
               lines.append("| " + " | ".join(size_row) + " |")
 
-              # 其他特性行
               for key, label in rows:
                   row_content = [f"**{label}**", "-"]
                   for filename, data in configs_data.items():
@@ -194,13 +222,19 @@ jobs:
               for f in sorted(files):
                   if f.lower().endswith((".yaml", ".yml")) and f not in IGNORE_FILES:
                       full_path = os.path.join(root_path, f)
+                      print(f"Analyzing: {f}...") # 打印日志以便调试
                       parsed_info = analyze_single_config(full_path)
-                      if parsed_info and (parsed_info["group_count"] > 0 or parsed_info["rule_count"] > 0):
+                      
+                      # 只要解析成功，哪怕规则数为0也加入，方便调试显示 N/A
+                      if parsed_info: 
+                          # 只要是有效的字典返回，我们就认为它是合法的 Config
                           configs_data[f] = {
                               "file_size": get_file_size(full_path),
                               "parsed": parsed_info
                           }
                           valid_yaml_files.append(f)
+                      else:
+                          print(f"Skipping {f}: Parse failed.")
 
               content = []
               content.append(f"# 📂 {title}\n")
@@ -210,13 +244,11 @@ jobs:
               content.append(f"[🔙 返回主页 (Return to Home)]({back_link})\n")
               content.append("> 🤖 **自动分析报告** | Auto-generated Report\n")
 
-              # --- 模块 1: 对比表格 ---
               if len(configs_data) > 1:
                   content.append("## ⚔️ 配置横向对比 (Comparison)\n")
                   content.append(generate_comparison_table(configs_data))
                   content.append("\n")
               
-              # --- 模块 2: 详细分析 ---
               if configs_data:
                   content.append("## 📄 配置文件详解 (Details)\n")
                   for filename, data in configs_data.items():
@@ -227,19 +259,16 @@ jobs:
                       content.append(f"- **大小**: {data['file_size']}") 
                       content.append(f"- **链接**: [查看源码]({file_url})")
 
-                      # --- 新增：网络端口详情表 ---
                       if info["ports_display"] or info["listeners_raw"]:
                           content.append(f"\n#### 📶 网络端口配置 (Ports)")
                           content.append("| 类型 | 端口/地址 | 说明 |")
                           content.append("| :--- | :--- | :--- |")
                           content.extend(info["ports_display"])
-                          # 如果有 Listeners，追加显示
                           if info["listeners_raw"]:
                               for l in info["listeners_raw"]:
                                   content.append(l)
                           content.append("\n")
 
-                      # 策略组折叠块
                       if info["groups_raw"]:
                           content.append(f"<details>")
                           content.append(f"<summary><b>🔎 点击查看策略组架构 ({info['group_count']}个)</b></summary>\n")
@@ -250,7 +279,6 @@ jobs:
                               content.append(f"| ... | 还有 {len(info['groups_raw'])-15} 个 |")
                           content.append(f"\n</details>\n")
                       
-                      # DNS 折叠块
                       if info["dns_raw"]:
                           content.append(f"<details>")
                           content.append(f"<summary><b>🌐 点击查看 DNS 配置</b></summary>\n")
@@ -278,7 +306,6 @@ jobs:
               rel_path = os.path.relpath(root, ".")
               if rel_path == ".": continue
               
-              # 仅当有YAML文件时生成
               if len([f for f in files if f not in IGNORE_FILES and f.endswith((".yaml", ".yml"))]) > 0:
                   readme_txt = generate_readme(root, files)
                   with open(os.path.join(root, "README.md"), "w", encoding="utf-8") as f:
@@ -292,6 +319,6 @@ jobs:
           git config --global user.email "41898282+github-actions[bot]@users.noreply.github.com"
           
           git add */**/README.md
-          git commit -m "Docs: Update README with port details" || echo "No changes to commit"
+          git commit -m "Docs: Fix YAML parsing issues" || echo "No changes to commit"
           
           git push origin HEAD:${{ github.ref_name }}
