@@ -37,7 +37,6 @@ jobs:
           import re
           
           # --- 0. 核心修复：让 PyYAML 忽略自定义标签 ---
-          # 很多 Clash 配置包含 !include 等标签，会导致报错，这里强制忽略它们
           yaml.add_multi_constructor("!", lambda loader, suffix, node: None, Loader=yaml.SafeLoader)
 
           # --- 配置区域 ---
@@ -99,7 +98,7 @@ jobs:
                       print(f"Warning: Could not read content of {file_path}")
                       return None
 
-                  # 使用 SafeLoader 加载，前面已经配置了忽略 ! 标签
+                  # 使用 SafeLoader 加载
                   data = yaml.safe_load(raw_content)
                   
                   if not isinstance(data, dict):
@@ -133,12 +132,12 @@ jobs:
                               info["listeners_raw"].append(f"| 👂 {name} | {port} | {l_type} |")
 
                   info["ports_display"] = []
-                  if info["port_mixed"] != "-": info["ports_display"].append(f"| Mixed (混合) | {info['port_mixed']} | HTTP/SOCKS |")
-                  if info["port_http"] != "-": info["ports_display"].append(f"| HTTP | {info['port_http']} | 仅 HTTP |")
-                  if info["port_socks"] != "-": info["ports_display"].append(f"| SOCKS5 | {info['port_socks']} | 仅 SOCKS |")
-                  if info["port_redir"] != "-": info["ports_display"].append(f"| Redirect | {info['port_redir']} | 透明代理 (TCP) |")
-                  if info["port_tproxy"] != "-": info["ports_display"].append(f"| TProxy | {info['port_tproxy']} | 透明代理 (UDP) |")
-                  if info["port_ctrl"] != "-": info["ports_display"].append(f"| Controller | {info['port_ctrl']} | 控制面板 |")
+                  if info["port_mixed"] != "-": info["ports_display"].append(f"| Mixed (混合) | {info["port_mixed"]} | HTTP/SOCKS |")
+                  if info["port_http"] != "-": info["ports_display"].append(f"| HTTP | {info["port_http"]} | 仅 HTTP |")
+                  if info["port_socks"] != "-": info["ports_display"].append(f"| SOCKS5 | {info["port_socks"]} | 仅 SOCKS |")
+                  if info["port_redir"] != "-": info["ports_display"].append(f"| Redirect | {info["port_redir"]} | 透明代理 (TCP) |")
+                  if info["port_tproxy"] != "-": info["ports_display"].append(f"| TProxy | {info["port_tproxy"]} | 透明代理 (UDP) |")
+                  if info["port_ctrl"] != "-": info["ports_display"].append(f"| Controller | {info["port_ctrl"]} | 控制面板 |")
 
                   # --- 3. 统计信息 ---
                   groups = data.get("proxy-groups", [])
@@ -222,12 +221,10 @@ jobs:
               for f in sorted(files):
                   if f.lower().endswith((".yaml", ".yml")) and f not in IGNORE_FILES:
                       full_path = os.path.join(root_path, f)
-                      print(f"Analyzing: {f}...") # 打印日志以便调试
+                      print(f"Analyzing: {f}...") 
                       parsed_info = analyze_single_config(full_path)
                       
-                      # 只要解析成功，哪怕规则数为0也加入，方便调试显示 N/A
                       if parsed_info: 
-                          # 只要是有效的字典返回，我们就认为它是合法的 Config
                           configs_data[f] = {
                               "file_size": get_file_size(full_path),
                               "parsed": parsed_info
@@ -256,6 +253,7 @@ jobs:
                       file_url = f"{REPO_URL}/{urllib.parse.quote(rel_path)}/{urllib.parse.quote(filename)}"
                       
                       content.append(f"### 📝 {filename}")
+                      # --- 修复点：加上了引号 ---
                       content.append(f"- **大小**: {data['file_size']}") 
                       content.append(f"- **链接**: [查看源码]({file_url})")
 
