@@ -7,7 +7,7 @@
 ## 📄 配置文件详解 (Details)
 
 ### 📝 mihomo.yaml
-- **大小**: 14.6 KB
+- **大小**: 15.1 KB
 - **链接**: [查看源码](https://github.com/MARSCHIAO/mihomo_yamls/blob/main/General_Config/echs-top/mihomo.yaml)
 
 #### 📶 网络端口配置 (Ports)
@@ -18,13 +18,15 @@
 
 
 <details>
-<summary><b>🔎 点击查看策略组架构 (25个)</b></summary>
+<summary><b>🔎 点击查看策略组架构 (27个)</b></summary>
 
 | 策略组 (Group) | 类型 (Type) |
 | :--- | :--- |
 | 👆 PROXY | `select` |
 | 👆 PROXYDNS | `select` |
 | 👆 FCM | `select` |
+| 👆 AI | `select` |
+| 👆 BOTTEST | `select` |
 | 👆 BILIBILI | `select` |
 | 👆 TELEGRAM | `select` |
 | 👆 META | `select` |
@@ -34,10 +36,8 @@
 | 👆 SPOTIFY | `select` |
 | 👆 STEAM-CN | `select` |
 | 👆 MICROSOFT-CN | `select` |
-| 👆 AI | `select` |
-| 👆 GOOGLE | `select` |
-| ♻️ URLTEST | `url-test` |
-| ... | 还有 10 个 |
+| 👆 APPLE-CN | `select` |
+| ... | 还有 12 个 |
 
 </details>
 
@@ -58,4 +58,4 @@
 
 | 文件名 | 大小 | 链接 |
 | :--- | :--- | :--- |
-| `mihomo.yaml` | 14.6 KB | [查看](https://github.com/MARSCHIAO/mihomo_yamls/blob/main/General_Config/echs-top/mihomo.yaml) |
+| `mihomo.yaml` | 15.1 KB | [查看](https://github.com/MARSCHIAO/mihomo_yamls/blob/main/General_Config/echs-top/mihomo.yaml) |
