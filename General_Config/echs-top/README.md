@@ -7,37 +7,36 @@
 ## 📄 配置文件详解 (Details)
 
 ### 📝 mihomo.yaml
-- **大小**: 15.1 KB
+- **大小**: 16.0 KB
 - **链接**: [查看源码](https://github.com/MARSCHIAO/mihomo_yamls/blob/main/General_Config/echs-top/mihomo.yaml)
 
 #### 📶 网络端口配置 (Ports)
 | 类型 | 端口/地址 | 说明 |
 | :--- | :--- | :--- |
 | Mixed (混合) | 7890 | HTTP/SOCKS |
-| Controller | 0.0.0.0:9090 | 控制面板 |
 
 
 <details>
-<summary><b>🔎 点击查看策略组架构 (27个)</b></summary>
+<summary><b>🔎 点击查看策略组架构 (29个)</b></summary>
 
 | 策略组 (Group) | 类型 (Type) |
 | :--- | :--- |
 | 👆 PROXY | `select` |
 | 👆 PROXYDNS | `select` |
+| 👆 WebRTC | `select` |
 | 👆 FCM | `select` |
-| 👆 AI | `select` |
 | 👆 BOTTEST | `select` |
-| 👆 BILIBILI | `select` |
+| 👆 AI | `select` |
 | 👆 TELEGRAM | `select` |
 | 👆 META | `select` |
 | 👆 TWITTER | `select` |
 | 👆 TIKTOK | `select` |
 | 👆 NETFLIX | `select` |
 | 👆 SPOTIFY | `select` |
+| 👆 YOUTUBE | `select` |
+| 👆 BILIBILI | `select` |
 | 👆 STEAM-CN | `select` |
-| 👆 MICROSOFT-CN | `select` |
-| 👆 APPLE-CN | `select` |
-| ... | 还有 12 个 |
+| ... | 还有 14 个 |
 
 </details>
 
@@ -58,4 +57,4 @@
 
 | 文件名 | 大小 | 链接 |
 | :--- | :--- | :--- |
-| `mihomo.yaml` | 15.1 KB | [查看](https://github.com/MARSCHIAO/mihomo_yamls/blob/main/General_Config/echs-top/mihomo.yaml) |
+| `mihomo.yaml` | 16.0 KB | [查看](https://github.com/MARSCHIAO/mihomo_yamls/blob/main/General_Config/echs-top/mihomo.yaml) |
