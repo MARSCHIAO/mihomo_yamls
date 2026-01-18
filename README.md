@@ -146,6 +146,8 @@
 | **华硕路由器** | fancyss | 🟢 | (华硕) 梅林固件首选，精简重构。 | 不支持老旧 CPU 型号。 | [github](https://github.com/hq450/fancyss) |
 |  |  |  |  |  |  |
 | **NAS（docker）** | easy-mihomo | 🟢 | fnos的首选。 | 新星软件依赖docker | [TELEGRAM](https://github.com/wlaosj/easy-mihomo) |
+|  |  |  |  |  |  |
+| **光猫shell**  | clash-for-gigabit | 🟢 | armv7a首选。 | 新星软件，天才想法 | [github](https://github.com/linmontfurry/clash-for-gigabit) |
 
 ---
 
