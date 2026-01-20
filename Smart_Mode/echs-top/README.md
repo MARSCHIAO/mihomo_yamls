@@ -7,7 +7,7 @@
 ## 📄 配置文件详解 (Details)
 
 ### 📝 mihomo_smart.yaml
-- **大小**: 16.0 KB
+- **大小**: 17.8 KB
 - **链接**: [查看源码](https://github.com/MARSCHIAO/mihomo_yamls/blob/main/Smart_Mode/echs-top/mihomo_smart.yaml)
 
 #### 📶 网络端口配置 (Ports)
@@ -17,7 +17,7 @@
 
 
 <details>
-<summary><b>🔎 点击查看策略组架构 (27个)</b></summary>
+<summary><b>🔎 点击查看策略组架构 (29个)</b></summary>
 
 | 策略组 (Group) | 类型 (Type) |
 | :--- | :--- |
@@ -34,9 +34,9 @@
 | 👆 NETFLIX | `select` |
 | 👆 SPOTIFY | `select` |
 | 👆 AI | `select` |
+| 👆 GITHUB | `select` |
 | 👆 GOOGLE | `select` |
-| 👆 STEAM-CN | `select` |
-| ... | 还有 12 个 |
+| ... | 还有 14 个 |
 
 </details>
 
@@ -45,8 +45,8 @@
 
 | 类型 | 服务器 |
 | :--- | :--- |
-| DoH | `https://8.8.8.8/dns-query#PROXYDNS&ecs=8.8.8.8/32&ecs-override=true` |
-| DoH | `https://9.9.9.9/dns-query#PROXYDNS&ecs=9.9.9.9/32&ecs-override=true` |
+| DoH | `https://8.8.8.8/dns-query#PROXYDNS` |
+| DoH | `https://1.1.1.1/dns-query#PROXYDNS` |
 
 </details>
 
@@ -57,4 +57,4 @@
 
 | 文件名 | 大小 | 链接 |
 | :--- | :--- | :--- |
-| `mihomo_smart.yaml` | 16.0 KB | [查看](https://github.com/MARSCHIAO/mihomo_yamls/blob/main/Smart_Mode/echs-top/mihomo_smart.yaml) |
+| `mihomo_smart.yaml` | 17.8 KB | [查看](https://github.com/MARSCHIAO/mihomo_yamls/blob/main/Smart_Mode/echs-top/mihomo_smart.yaml) |
