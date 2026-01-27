@@ -1,0 +1,77 @@
+name: Download Config (Reusable)
+
+on:
+  workflow_call:
+    inputs:
+      category:
+        description: '配置类别 (如: General_Config, Smart_Mode)'
+        required: true
+        type: string
+      source_name:
+        description: '配置源名称 (如: Yiteei, 666OS)'
+        required: true
+        type: string
+      files:
+        description: 'JSON格式的文件列表: [{"name":"file.yaml","url":"https://..."}]'
+        required: true
+        type: string
+
+permissions:
+  contents: write
+
+jobs:
+  download:
+    runs-on: ubuntu-latest
+    steps:
+      - name: 检查存储库
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ github.ref }}
+
+      - name: 下载 ${{ inputs.source_name }} 配置
+        run: |
+          echo "📥 开始下载 ${{ inputs.source_name }} 配置..."
+          mkdir -p "${{ inputs.category }}/${{ inputs.source_name }}"
+          
+          # 解析 JSON 并下载文件
+          echo '${{ inputs.files }}' | jq -c '.[]' | while read -r item; do
+            filename=$(echo "$item" | jq -r '.name')
+            url=$(echo "$item" | jq -r '.url')
+            
+            echo "  ⬇️  下载 $filename..."
+            if curl -s -f -o "${{ inputs.category }}/${{ inputs.source_name }}/$filename" "$url"; then
+              size=$(wc -c < "${{ inputs.category }}/${{ inputs.source_name }}/$filename")
+              echo "  ✅ $filename: ${size} bytes"
+            else
+              echo "  ❌ $filename 下载失败"
+            fi
+          done
+
+      - name: 验证下载结果
+        run: |
+          echo "🔍 验证配置文件..."
+          total=0
+          success=0
+          
+          for file in ${{ inputs.category }}/${{ inputs.source_name }}/*.yaml; do
+            if [ -f "$file" ]; then
+              total=$((total + 1))
+              size=$(wc -c < "$file")
+              if [ $size -gt 0 ]; then
+                success=$((success + 1))
+                echo "✅ $(basename $file): ${size} bytes"
+              else
+                echo "⚠️  $(basename $file): 文件为空"
+              fi
+            fi
+          done
+          
+          echo ""
+          echo "📊 下载统计: $success/$total 个文件成功"
+
+      - name: 上传 artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ inputs.category }}-${{ inputs.source_name }}
+          path: ${{ inputs.category }}/${{ inputs.source_name }}/
+          retention-days: 1
