@@ -1,0 +1,219 @@
+name: Download YAML Files
+
+on:
+  schedule:
+    - cron: '30 22 * * *' # UTC 22:30 = 北京时间次日6:30
+  workflow_dispatch:
+    inputs:
+      category:
+        description: '选择要更新的类别'
+        required: false
+        type: choice
+        options:
+          - all
+          - official
+          - general
+          - smart
+          - mobile
+        default: all
+
+permissions:
+  contents: write
+
+jobs:
+  # 第一阶段: 下载所有配置
+  download-configs:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        category:
+          - official
+          - general
+          - smart
+          - mobile
+      fail-fast: false # 即使某个任务失败，其他任务继续执行
+      max-parallel: 4 # 最多并行4个任务
+    
+    # 根据手动输入过滤任务
+    if: |
+      github.event_name == 'schedule' ||
+      github.event.inputs.category == 'all' ||
+      github.event.inputs.category == matrix.category
+    
+    steps:
+      - name: 检查存储库
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ github.ref }}
+
+      - name: 下载配置文件
+        id: download
+        run: |
+          case "${{ matrix.category }}" in
+            official)
+              echo "📥 下载官方示例配置..."
+              mkdir -p "Official_Examples/Metacubex"
+              curl -s -o "Official_Examples/Metacubex/rule-set_config.yaml" \
+                "https://wiki.metacubex.one/example/mrs"
+              curl -s -o "Official_Examples/Metacubex/geox_config.yaml" \
+                "https://wiki.metacubex.one/example/geox"
+              artifact_path="Official_Examples"
+              ;;
+            
+            general)
+              echo "📥 下载通用配置..."
+              bash .github/scripts/download-general.sh
+              artifact_path="General_Config"
+              ;;
+            
+            smart)
+              echo "📥 下载Smart模式配置..."
+              bash .github/scripts/download-smart.sh
+              artifact_path="Smart_Mode"
+              ;;
+            
+            mobile)
+              echo "📥 下载移动模块配置..."
+              bash .github/scripts/download-mobile.sh
+              artifact_path="Mobile_Modules"
+              ;;
+          esac
+          
+          echo "artifact_path=$artifact_path" >> $GITHUB_OUTPUT
+
+      - name: 验证下载结果
+        run: |
+          echo "🔍 验证 ${{ matrix.category }} 配置..."
+          
+          total=0
+          success=0
+          failed=0
+          
+          case "${{ matrix.category }}" in
+            official) dir="Official_Examples" ;;
+            general) dir="General_Config" ;;
+            smart) dir="Smart_Mode" ;;
+            mobile) dir="Mobile_Modules" ;;
+          esac
+          
+          if [ -d "$dir" ]; then
+            while IFS= read -r -d '' file; do
+              total=$((total + 1))
+              size=$(wc -c < "$file")
+              
+              if [ $size -gt 100 ]; then  # 文件大于100字节才算成功
+                success=$((success + 1))
+                echo "✅ ${file}: ${size} bytes"
+              else
+                failed=$((failed + 1))
+                echo "❌ ${file}: ${size} bytes (too small)"
+              fi
+            done < <(find "$dir" -type f -name "*.yaml" -print0)
+          fi
+          
+          echo ""
+          echo "📊 统计结果:"
+          echo "  总计: $total 个文件"
+          echo "  成功: $success 个文件"
+          echo "  失败: $failed 个文件"
+          
+          # 如果失败率超过50%，标记为警告
+          if [ $total -gt 0 ] && [ $((failed * 2)) -gt $total ]; then
+            echo "⚠️  警告: 失败率过高!"
+          fi
+
+      - name: 上传 artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: configs-${{ matrix.category }}
+          path: ${{ steps.download.outputs.artifact_path }}
+          retention-days: 1
+
+  # 第二阶段: 合并所有配置并提交
+  commit-changes:
+    needs: download-configs
+    runs-on: ubuntu-latest
+    if: always() # 即使某些下载任务失败也执行
+    
+    steps:
+      - name: 检查存储库
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ github.ref }}
+          fetch-depth: 0 # 获取完整历史
+
+      - name: 下载所有 artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: downloaded-configs
+
+      - name: 合并配置文件
+        run: |
+          echo "📦 合并配置文件..."
+          
+          # 移动所有下载的配置到对应目录
+          if [ -d "downloaded-configs" ]; then
+            for artifact in downloaded-configs/configs-*; do
+              if [ -d "$artifact" ]; then
+                echo "  处理 $(basename $artifact)..."
+                cp -r "$artifact"/* . 2>/dev/null || true
+              fi
+            done
+          fi
+          
+          # 清理临时目录
+          rm -rf downloaded-configs
+
+      - name: 生成更新报告
+        id: report
+        run: |
+          echo "📝 生成更新报告..."
+          
+          report="## 配置更新报告 - $(date +'%Y-%m-%d %H:%M:%S')
+
+"
+          
+          # 统计各类别文件数
+          for dir in Official_Examples General_Config Smart_Mode Mobile_Modules; do
+            if [ -d "$dir" ]; then
+              count=$(find "$dir" -type f -name "*.yaml" | wc -l)
+              size=$(du -sh "$dir" 2>/dev/null | cut -f1)
+              report="${report}
+### ${dir}
+- 文件数量: ${count}
+- 总大小: ${size}
+"
+            fi
+          done
+          
+          echo "$report"
+          echo "$report" > UPDATE_REPORT.md
+
+      - name: 检查是否有更改
+        id: check
+        run: |
+          git diff --quiet || echo "has_changes=true" >> $GITHUB_OUTPUT
+
+      - name: 提交并推送更改
+        if: steps.check.outputs.has_changes == 'true'
+        run: |
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          
+          git add .
+          
+          # 创建详细的提交信息
+          commit_msg="🔄 自动更新配置文件 [$(date +'%Y-%m-%d %H:%M:%S')]
+
+$(cat UPDATE_REPORT.md)"
+          
+          git commit -m "$commit_msg"
+          git push origin HEAD:${{ github.ref_name }}
+          
+          echo "✅ 更改已成功推送"
+
+      - name: 清理旧的 artifacts
+        if: always()
+        uses: geekyeggo/delete-artifact@v2
+        with:
+          name: configs-*
